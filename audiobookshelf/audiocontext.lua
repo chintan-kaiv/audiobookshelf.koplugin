@@ -4,6 +4,7 @@ local DataStorage = require("datastorage")
 local InfoMessage = require("ui/widget/infomessage")
 local LuaSettings = require("luasettings")
 local UIManager = require("ui/uimanager")
+local logger = require("logger")
 
 local Api = require("audiobookshelf/audiobookshelfapi")
 local Kinamp = require("audiobookshelf/kinampclient")
@@ -22,6 +23,7 @@ function Context.get()
         api = Api,
         store = store,
         kinamp = Kinamp,
+        log = function(message) logger.warn("audiobookshelf session:", message) end,
         sched = {
             scheduleIn = function(seconds, fn) UIManager:scheduleIn(seconds, fn) end,
             unschedule = function(fn) UIManager:unschedule(fn) end,

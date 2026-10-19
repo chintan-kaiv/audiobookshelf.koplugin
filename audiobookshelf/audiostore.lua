@@ -93,10 +93,13 @@ function Store:remove(item_id)
     self.settings:flush()
 end
 
-function Store:setLastSent(item_id, seconds)
+-- `unsynced` is true when `seconds` has not reached ABS yet (so the next Play
+-- pushes it instead of letting ABS's older position overwrite it).
+function Store:setLastSent(item_id, seconds, unsynced)
     local e = self:get(item_id)
     if e then
         e.last_sent = seconds
+        e.unsynced = unsynced and true or false
         self:put(e)
     end
 end

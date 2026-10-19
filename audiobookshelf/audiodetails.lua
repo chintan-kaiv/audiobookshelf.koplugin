@@ -4,6 +4,7 @@ local UIManager = require("ui/uimanager")
 local lfs = require("libs/libkoreader-lfs")
 local util = require("util")
 local T = require("ffi/util").template
+local logger = require("logger")
 local _ = require("gettext")
 
 local AudioContext = require("audiobookshelf/audiocontext")
@@ -15,6 +16,17 @@ local AudioDetails = {}
 
 local function toast(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout or 3 })
+end
+
+-- An uncaught error in a UI callback closes KOReader. Show it instead.
+local function safe(fn)
+    return function(...)
+        local ok, err = pcall(fn, ...)
+        if not ok then
+            logger.warn("audiobookshelf: ui action failed:", err)
+            toast(T(_("Something went wrong: %1"), tostring(err)), 8)
+        end
+    end
 end
 
 local function hms(seconds)
@@ -97,36 +109,73 @@ function AudioDetails.show(item_id)
     end
 
     local function doDownload()
-        ensureDownloadDir(ctx, function(download_dir)
+        ensureDownloadDir(ctx, safe(function(download_dir)
             local dir = ctx.store:dirFor(download_dir, title, item_id)
             local entry = Store.makeEntry(item_id, title, author, dir, tracks, total)
+            local fs = realFs()
             local free
             local ok, usage = pcall(util.diskUsage, download_dir)
             if ok and type(usage) == "table" then free = usage.available end
-            local pre, perr = Downloader.preflight(entry, free)
+            local pre, perr = Downloader.preflight(entry, free, fs)
             if not pre then
                 toast(preflightMessage(perr), 5)
                 return
             end
-            local msg
-            local done, err = Downloader.run({
-                api = ctx.api, fs = realFs(), entry = entry,
-                on_progress = function(i, n)
-                    if msg then UIManager:close(msg) end
-                    msg = InfoMessage:new{ text = T(_("Downloading %1 of %2…"), i, n) }
-                    UIManager:show(msg)
-                    UIManager:forceRePaint()
-                end,
-            })
-            if msg then UIManager:close(msg) end
-            if done then
-                ctx.store:put(entry)
-                toast(T(_("Saved to:\n%1"), entry.dir), 4)
-                reopen()
-            else
-                toast(T(_("Download failed: %1"), tostring(err)), 5)
+
+            local cancelled, replacing, msg = false, false, nil
+            local function closeMsg()
+                replacing = true
+                if msg then UIManager:close(msg) end
+                replacing = false
+                msg = nil
             end
-        end)
+            local function showProgress(i, n)
+                closeMsg()
+                msg = InfoMessage:new{
+                    text = T(_("Downloading %1 of %2…\nTap to stop after the current file."), i, n),
+                    dismiss_callback = function() if not replacing then cancelled = true end end,
+                }
+                UIManager:show(msg)
+                UIManager:forceRePaint()
+            end
+            local function finish(done, err)
+                closeMsg()
+                if done then
+                    ctx.store:put(entry)
+                    toast(T(_("Saved to:\n%1"), entry.dir), 4)
+                    reopen()
+                elseif err == "cancelled" then
+                    toast(_("Download stopped. Press Download again to resume."), 4)
+                else
+                    toast(T(_("Download failed: %1"), tostring(err)), 5)
+                end
+            end
+
+            -- Driven one file at a time so taps are processed between files.
+            -- A single huge file still blocks until it finishes.
+            local co = coroutine.create(function()
+                return Downloader.run({
+                    api = ctx.api, fs = fs, entry = entry,
+                    cancelled = function() return cancelled end,
+                    on_progress = function(i, n)
+                        showProgress(i, n)
+                        coroutine.yield()
+                    end,
+                })
+            end)
+            local step
+            step = safe(function()
+                local resumed, done, err = coroutine.resume(co)
+                if not resumed then
+                    finish(false, done)
+                elseif coroutine.status(co) == "dead" then
+                    finish(done, err)
+                else
+                    UIManager:nextTick(step)
+                end
+            end)
+            step()
+        end))
     end
 
     local function doDelete()
@@ -176,15 +225,15 @@ function AudioDetails.show(item_id)
         local buttons = {
             {
                 downloaded
-                    and { text = _("Delete download"), callback = doDelete }
-                    or { text = _("Download"), callback = doDownload },
+                    and { text = _("Delete download"), callback = safe(doDelete) }
+                    or { text = _("Download"), callback = safe(doDownload) },
             },
             {
                 downloaded and (playing
-                    and { text = _("Stop"), callback = function() ctx.session:stop(); reopen() end }
-                    or { text = _("Play / Resume"), callback = doPlay })
+                    and { text = _("Stop"), callback = safe(function() ctx.session:stop(); reopen() end) }
+                    or { text = _("Play / Resume"), callback = safe(doPlay) })
                     or { text = _("Play / Resume"), enabled = false, callback = function() end },
-                { text = _("Sync now"), enabled = playing and true or false, callback = doSyncNow },
+                { text = _("Sync now"), enabled = playing and true or false, callback = safe(doSyncNow) },
             },
             {
                 { text = _("Close"), callback = function() UIManager:close(dialog) end },

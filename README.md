@@ -41,6 +41,7 @@ Each library is listed twice: once for ebooks, and once as "(Audiobooks)".
 
 Notes:
 - Starting a book replaces KinAMP's queue with the book's files.
-- Progress only syncs while KOReader is running. If you exit KOReader and keep listening, the last position is saved when you exit.
+- Progress only syncs while KOReader is running. It is saved when you stop, suspend, or leave KOReader (menu exit, power off, or the back-button exit). If KinAMP keeps playing after KOReader closes, the next Play joins it instead of seeking back to an older position.
+- A download can be stopped between files by tapping the progress message; a single very large file cannot be interrupted until it finishes.
 - If Audiobookshelf is unreachable when you press Play, the last position saved on the Kindle is used.
 - A single file larger than 4 GB cannot be stored on the Kindle volume and is refused.

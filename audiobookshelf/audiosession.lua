@@ -5,8 +5,12 @@ local Policy = require("audiobookshelf/progresspolicy")
 local AbsProgress = require("audiobookshelf/absprogress")
 local Store = require("audiobookshelf/audiostore")
 
-local Session = { TICK_SECONDS = 30, MAX_MISSES = 3 }
+local Session = { TICK_SECONDS = 30, MAX_MISSES = 3, END_WINDOW = 60 }
 Session.__index = Session
+
+-- Reasons that mean "the player is not playing our book right now". Paused is
+-- not one of them: KinAMP stops refreshing its status while paused.
+local MISS_REASONS = { no_daemon = true, not_active = true, path_mismatch = true }
 
 function Session.new(deps)
     local self = setmetatable({ deps = deps, active = nil }, Session)
@@ -29,25 +33,51 @@ function Session:_end()
     self.active = nil
 end
 
+-- Runs inside a UIManager timer, where an uncaught error would close KOReader.
 function Session:_tick()
     if not self.active then return end
-    self:_sync(false)
+    local ok, err = pcall(self._sync, self, false)
+    if not ok and self.deps.log then self.deps.log(tostring(err)) end
     self:_schedule()
+end
+
+-- The book ran out: ABS gets the full length and isFinished, then we stand down.
+function Session:_finish()
+    local a, d = self.active, self.deps
+    local total = a.entry.total
+    local ok = d.api:setProgress(a.entry.item_id, AbsProgress.body(total, total))
+    d.store:setLastSent(a.entry.item_id, total, not ok)
+    self:_end()
+    if ok then return total, "finished" end
+    return nil, "offline"
 end
 
 function Session:_sync(force)
     local a = self.active
     if not a then return nil, "inactive" end
+    -- Until the start step has put playback where ABS said, the player reports
+    -- its own early position; writing it would wipe the real progress.
+    if not a.started then return nil, "not_started" end
     local d = self.deps
+    local status = d.kinamp.getStatus()
     local pos, reason = Policy.decide({
-        status = d.kinamp.getStatus(),
+        status = status,
         tracks = a.entry.tracks,
         paths = a.paths,
         last_sent = a.last_sent,
         min_delta = force and 1 or nil,
     })
+    -- Remember where we last saw our book playing, whatever the threshold said.
+    if status and (status.is_playing or status.is_paused) and status.index
+        and a.paths[status.index] == status.path then
+        a.last_global = PositionMap.toGlobal(a.entry.tracks, status.index, status.pos) or a.last_global
+    end
     if not pos then
-        if reason == "no_daemon" then
+        if MISS_REASONS[reason] then
+            if reason == "not_active" and a.last_global
+                and (a.entry.total or 0) - a.last_global <= Session.END_WINDOW then
+                return self:_finish()
+            end
             a.misses = a.misses + 1
             if a.misses >= Session.MAX_MISSES then self:_end() end
         else
@@ -56,8 +86,10 @@ function Session:_sync(force)
         return nil, reason
     end
     a.misses = 0
-    d.store:setLastSent(a.entry.item_id, pos) -- always keep it locally for offline resume
-    if d.api:setProgress(a.entry.item_id, AbsProgress.body(pos, a.entry.total)) then
+    local sent = d.api:setProgress(a.entry.item_id, AbsProgress.body(pos, a.entry.total)) and true or false
+    -- Always keep it locally for offline resume; flag it when ABS has not got it.
+    d.store:setLastSent(a.entry.item_id, pos, not sent)
+    if sent then
         a.last_sent = pos
         return pos
     end
@@ -72,25 +104,52 @@ function Session:start(entry)
         self:_sync(true)
         self:_end()
     end
+    local paths = Store.paths(entry)
 
-    local remote, code = d.api:getProgress(entry.item_id)
-    local offline = (remote == nil and code ~= 404)
+    -- KinAMP outlives KOReader. If it is still playing this book, join it
+    -- instead of seeking back to an older ABS position.
+    local live = d.kinamp.getStatus()
+    if live and (live.is_playing or live.is_paused) and live.index and paths[live.index] == live.path then
+        self.active = { entry = entry, paths = paths, last_sent = nil, misses = 0, started = true }
+        self:_schedule()
+        return true, "attached"
+    end
+
     local seconds, last_sent
-    if remote and remote.isFinished then
-        seconds, last_sent = 0, nil
-    elseif remote and remote.currentTime then
-        seconds, last_sent = remote.currentTime, remote.currentTime
+    local offline = false
+    if entry.unsynced and entry.last_sent then
+        -- Progress made while ABS was unreachable beats ABS's older position.
+        seconds = entry.last_sent
+        if d.api:setProgress(entry.item_id, AbsProgress.body(seconds, entry.total)) then
+            d.store:setLastSent(entry.item_id, seconds, false)
+            last_sent = seconds
+        else
+            offline = true
+        end
     else
-        seconds, last_sent = entry.last_sent or 0, entry.last_sent
+        local remote, code = d.api:getProgress(entry.item_id)
+        offline = (remote == nil and code ~= 404)
+        if remote and remote.isFinished then
+            seconds, last_sent = 0, nil
+        elseif remote and remote.currentTime then
+            seconds, last_sent = remote.currentTime, remote.currentTime
+        else
+            seconds, last_sent = entry.last_sent or 0, entry.last_sent
+        end
+    end
+    -- At or near the end there is nothing left to resume into: start over.
+    local total = entry.total or 0
+    if total > 0 and seconds >= total - AbsProgress.FINISHED_WITHIN then
+        seconds, last_sent = 0, nil
     end
 
     local index, offset = PositionMap.toTrackPos(entry.tracks, seconds)
-    local paths = Store.paths(entry)
-    self.active = { entry = entry, paths = paths, last_sent = last_sent, misses = 0 }
+    self.active = { entry = entry, paths = paths, last_sent = last_sent, misses = 0, started = false }
 
     local function afterStart()
         if not self.active or self.active.entry ~= entry then return end
         if offset > 0 then d.kinamp.seek(offset) end
+        self.active.started = true
         self:_schedule()
     end
 

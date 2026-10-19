@@ -38,17 +38,33 @@ end
 -- the audio context for people who only use the ebook side.
 function Audiobookshelf:onSuspend()
     local ctx = AudioContext.peek()
-    if ctx then ctx.session:suspend() end
+    if ctx then pcall(ctx.session.suspend, ctx.session) end
 end
 
 function Audiobookshelf:onResume()
     local ctx = AudioContext.peek()
-    if ctx then ctx.session:resume() end
+    if ctx then pcall(ctx.session.resume, ctx.session) end
+end
+
+-- The three ways out of KOReader announce themselves differently (menu exit,
+-- power off/reboot, back-button exit), so cover all of them. Switching between
+-- file manager and reader also closes the widget but is not an exit.
+local function detach()
+    local ctx = AudioContext.peek()
+    if ctx then pcall(ctx.session.detach, ctx.session) end
 end
 
 function Audiobookshelf:onExit()
-    local ctx = AudioContext.peek()
-    if ctx then ctx.session:detach() end
+    detach()
+end
+
+function Audiobookshelf:onClose()
+    detach()
+end
+
+function Audiobookshelf:onCloseWidget()
+    if self.ui and self.ui.tearing_down then return end
+    detach()
 end
 
 return Audiobookshelf

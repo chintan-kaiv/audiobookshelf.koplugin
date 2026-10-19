@@ -194,12 +194,18 @@ end
 -- an unparsable body yields an empty table.
 function AudiobookshelfApi:_json(method, path, body)
     local sink = {}
+    local server = self.abs_settings:readSetting("server")
+    local token = self.abs_settings:readSetting("token")
+    if not server or not token then
+        logger.warn("AudiobookshelfApi: server or token not configured")
+        return nil, nil
+    end
     local headers = {
-        ["Authorization"] = "Bearer " .. self.abs_settings:readSetting("token"),
+        ["Authorization"] = "Bearer " .. token,
         ["User-Agent"] = T("audiobookshelf.koplugin/%1", table.concat(VERSION, ".")),
     }
     local request = {
-        url = self.abs_settings:readSetting("server") .. path,
+        url = server .. path,
         method = method,
         headers = headers,
         sink = ltn12.sink.table(sink),

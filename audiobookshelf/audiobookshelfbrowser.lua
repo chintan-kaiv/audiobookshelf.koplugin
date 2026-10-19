@@ -70,7 +70,14 @@ function AudiobookshelfBrowser:onMenuSelect(item)
         })
         self:openLibrary(item.id, item.text, item.audio)
     elseif item.type == "audiobook" then
-        require("audiobookshelf/audiodetails").show(item.id)
+        local ok, err = pcall(function() require("audiobookshelf/audiodetails").show(item.id) end)
+        if not ok then
+            logger.warn("audiobookshelf: audiobook page failed:", err)
+            UIManager:show(InfoMessage:new{
+                text = _("Could not open the audiobook page:\n") .. tostring(err),
+                timeout = 8,
+            })
+        end
     elseif item.type == "book" then
         -- Pass a zero-argument closure so the child calls the parent correctly
         local bookdetailswidget = BookDetailsWidget:new{

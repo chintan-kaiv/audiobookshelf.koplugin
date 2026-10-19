@@ -5,11 +5,14 @@ local Store = require("audiobookshelf/audiostore")
 local Downloader = {}
 local FAT_MAX = 4294967295
 
-function Downloader.preflight(entry, free_bytes)
+-- `fs` is optional: when given, files already complete on disk do not count
+-- towards the space needed, so resuming a nearly finished book is not refused.
+function Downloader.preflight(entry, free_bytes, fs)
     local need = 0
     for _, t in ipairs(entry.tracks) do
         if t.size and t.size > FAT_MAX then return nil, "file_too_large" end
-        if t.size then need = need + t.size end
+        local have = fs and t.size and fs.size(t.path) == t.size
+        if t.size and not have then need = need + t.size end
     end
     if free_bytes and need > free_bytes then return nil, "no_space" end
     return true
@@ -20,8 +23,10 @@ function Downloader.run(opts)
     if not fs.mkdir_p(entry.dir) then return nil, "mkdir_failed" end
     local n = #entry.tracks
     for i, t in ipairs(entry.tracks) do
-        if opts.cancelled and opts.cancelled() then return nil, "cancelled" end
+        -- on_progress may yield (the UI drives this loop from a coroutine and
+        -- processes taps while paused), so the cancel check comes after it.
         if opts.on_progress then opts.on_progress(i, n, t) end
+        if opts.cancelled and opts.cancelled() then return nil, "cancelled" end
         local size = fs.size(t.path)
         local complete = size ~= nil and (t.size == nil or size == t.size)
         if not complete then

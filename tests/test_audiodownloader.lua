@@ -106,3 +106,47 @@ H.test("preflight refuses when there is not enough space, allows unknown space",
     H.eq(Downloader.preflight(e, 30), true)
     H.eq(Downloader.preflight(e, nil), true)
 end)
+
+H.test("preflight only counts files that are not already on disk", function()
+    local fs = fakeFs({ ["/d/Book/001-a.mp3"] = 10 })
+    local e = newEntry()
+    local ok, err = Downloader.preflight(e, 19, fs)
+    H.eq(ok, nil); H.eq(err, "no_space")
+    H.eq(Downloader.preflight(e, 20, fs), true)
+end)
+
+H.test("run can be driven step by step from a coroutine", function()
+    local fs = fakeFs()
+    local api = fakeApi(fs, 200, SIZES)
+    local e = newEntry()
+    local co = coroutine.create(function()
+        return Downloader.run({ api = api, fs = fs, entry = e,
+            on_progress = function() coroutine.yield("tick") end })
+    end)
+    local steps = 0
+    while true do
+        local ok, a = coroutine.resume(co)
+        H.truthy(ok, tostring(a))
+        if coroutine.status(co) == "dead" then H.eq(a, true); break end
+        steps = steps + 1
+    end
+    H.eq(steps, 2)
+    H.eq(e.complete, true)
+end)
+
+H.test("a cancel requested while paused between files prevents the next download", function()
+    local fs = fakeFs()
+    local api = fakeApi(fs, 200, SIZES)
+    local cancelled = false
+    local co = coroutine.create(function()
+        return Downloader.run({ api = api, fs = fs, entry = newEntry(),
+            cancelled = function() return cancelled end,
+            on_progress = function() coroutine.yield("tick") end })
+    end)
+    coroutine.resume(co) -- paused in on_progress for file 1
+    cancelled = true     -- the user taps while the UI has control
+    local ok, result, err = coroutine.resume(co)
+    H.truthy(ok)
+    H.eq(result, nil); H.eq(err, "cancelled")
+    H.eq(#api.calls, 0)
+end)
