@@ -41,6 +41,16 @@ function Session:_tick()
     self:_schedule()
 end
 
+-- Send one position to ABS. Always kept locally for offline resume, and flagged
+-- when ABS has not got it.
+function Session:_send(a, pos)
+    local d = self.deps
+    local sent = d.api:setProgress(a.entry.item_id, AbsProgress.body(pos, a.entry.total)) and true or false
+    d.store:setLastSent(a.entry.item_id, pos, not sent)
+    if sent then a.last_sent = pos end
+    return sent
+end
+
 -- The book ran out: ABS gets the full length and isFinished, then we stand down.
 function Session:_finish()
     local a, d = self.active, self.deps
@@ -95,6 +105,12 @@ function Session:_sync(force)
                 and (a.entry.total or 0) - a.last_global <= Session.END_WINDOW then
                 return self:_finish()
             end
+            -- Stopped from the player's own screen between ticks: send the last
+            -- position we saw it at, once.
+            if reason == "not_active" and a.started and a.last_global
+                and (a.last_sent == nil or math.abs(a.last_global - a.last_sent) >= 1) then
+                self:_send(a, a.last_global)
+            end
             a.misses = a.misses + 1
             if a.misses >= Session.MAX_MISSES then self:_end() end
         else
@@ -103,13 +119,7 @@ function Session:_sync(force)
         return nil, reason
     end
     a.misses = 0
-    local sent = d.api:setProgress(a.entry.item_id, AbsProgress.body(pos, a.entry.total)) and true or false
-    -- Always keep it locally for offline resume; flag it when ABS has not got it.
-    d.store:setLastSent(a.entry.item_id, pos, not sent)
-    if sent then
-        a.last_sent = pos
-        return pos
-    end
+    if self:_send(a, pos) then return pos end
     return nil, "offline"
 end
 

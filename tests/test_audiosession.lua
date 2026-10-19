@@ -411,3 +411,21 @@ H.test("start reports the in-track offset so the UI can warn about slow seeks", 
     local ok, note, offset = w.session:start(w.entry)
     H.eq(ok, true); H.eq(note, nil); H.eq(offset, 30)
 end)
+
+H.test("a player stopped from KinAMP's own screen still gets its last position sent once", function()
+    local w = setup({ remote = { currentTime = 30 }, remote_code = 200 })
+    w.session:start(w.entry)
+    w.runNext()
+    w.status = st(1, 45) -- global 45, well away from the end of the 200 s book
+    w.runNext()
+    H.eq(w.progress[#w.progress].currentTime, 45)
+    w.status = st(1, 52) -- global 52: moved 7 s, below the normal threshold
+    w.runNext()
+    H.eq(#w.progress, 1)
+    w.status = { is_playing = false, is_paused = false, index = 1, path = paths[1], pos = 0 }
+    w.runNext()
+    H.eq(#w.progress, 2)
+    H.eq(w.progress[2].currentTime, 52)
+    w.runNext() -- still stopped: nothing new to send
+    H.eq(#w.progress, 2)
+end)

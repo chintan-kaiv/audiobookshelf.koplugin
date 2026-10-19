@@ -34,6 +34,20 @@ local function hms(seconds)
     return string.format("%d:%02d:%02d", math.floor(seconds / 3600), math.floor((seconds % 3600) / 60), seconds % 60)
 end
 
+-- Bring KinAMP's floating player to the front. Its "show player" action is a
+-- toggle, so only fire it when the player is not already on screen.
+local function showKinampPlayer()
+    local ok, err = pcall(function()
+        local ReaderUI = require("apps/reader/readerui")
+        local FileManager = require("apps/filemanager/filemanager")
+        local host = ReaderUI.instance or FileManager.instance
+        local kinamp = host and host.kinamp
+        if kinamp and kinamp.player and UIManager:isWidgetShown(kinamp.player) then return end
+        UIManager:sendEvent(require("ui/event"):new("ShowKinAMPPlayer"))
+    end)
+    if not ok then logger.warn("audiobookshelf: could not show the KinAMP player:", err) end
+end
+
 local function realFs()
     return {
         mkdir_p = function(dir)
@@ -200,13 +214,15 @@ function AudioDetails.show(item_id)
             end
             return
         end
+        -- Hand the screen to KinAMP's player (its own Stop/Pause live there).
+        if dialog then UIManager:close(dialog) end
+        showKinampPlayer()
         if note == "offline" then
             toast(_("Audiobookshelf is unreachable. Resuming from the last position saved on this Kindle."), 5)
         elseif note ~= "attached" and offset and offset > 60 then
             -- KinAMP seeks by decoding up to the position: silent for a while on long MP3s.
             toast(_("Starting... jumping to your position in a long file can take about 20 to 30 seconds before you hear sound."), 8)
         end
-        reopen()
     end
 
     local function doSyncNow()
