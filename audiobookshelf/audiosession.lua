@@ -52,14 +52,31 @@ function Session:_finish()
     return nil, "offline"
 end
 
+-- KinAMP seeks by restarting the file and decoding up to the position, which
+-- takes ~20 s deep into a long MP3. Until the player reports a position at or
+-- near the requested one, its status is the pre-seek position, not progress.
+local function onOurBook(a, status)
+    return status and (status.is_playing or status.is_paused) and status.index
+        and a.paths[status.index] == status.path
+end
+
 function Session:_sync(force)
     local a = self.active
     if not a then return nil, "inactive" end
-    -- Until the start step has put playback where ABS said, the player reports
-    -- its own early position; writing it would wipe the real progress.
-    if not a.started then return nil, "not_started" end
     local d = self.deps
     local status = d.kinamp.getStatus()
+    if not a.started then
+        if not a.seek_sent then return nil, "not_started" end
+        if onOurBook(a, status) and status.index == a.start_index then
+            if (tonumber(status.pos) or 0) >= a.start_offset - 2 then
+                a.started = true -- the seek landed
+            else
+                return nil, "not_started" -- still decoding up to the position
+            end
+        end
+        -- Anything else (no player, stopped, someone else's file, another track
+        -- of this book) is handled by the normal path below.
+    end
     local pos, reason = Policy.decide({
         status = status,
         tracks = a.entry.tracks,
@@ -144,12 +161,16 @@ function Session:start(entry)
     end
 
     local index, offset = PositionMap.toTrackPos(entry.tracks, seconds)
-    self.active = { entry = entry, paths = paths, last_sent = last_sent, misses = 0, started = false }
+    self.active = {
+        entry = entry, paths = paths, last_sent = last_sent, misses = 0,
+        started = false, seek_sent = false, start_index = index, start_offset = offset,
+    }
 
     local function afterStart()
         if not self.active or self.active.entry ~= entry then return end
         if offset > 0 then d.kinamp.seek(offset) end
-        self.active.started = true
+        self.active.seek_sent = true
+        if offset == 0 then self.active.started = true end -- nothing to wait for
         self:_schedule()
     end
 
@@ -165,7 +186,7 @@ function Session:start(entry)
             end
         end)
     end
-    return true, offline and "offline" or nil
+    return true, offline and "offline" or nil, offset
 end
 
 function Session:stop()

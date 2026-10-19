@@ -371,3 +371,43 @@ H.test("an error inside a tick never escapes into the UI timer", function()
     H.eq(w.session:isActive(), true)
     H.eq(#w.scheduled, 1)
 end)
+
+H.test("progress is not written until the seek has actually landed", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200 })
+    w.session:start(w.entry)
+    w.runNext() -- the seek command has been sent to KinAMP
+    w.status = st(2, 0) -- but KinAMP is still decoding up to the position
+    local pos, why = w.session:syncNow()
+    H.eq(pos, nil); H.eq(why, "not_started")
+    w.session:suspend()
+    H.eq(#w.progress, 0)
+    w.status = st(2, 45) -- the seek landed and playback moved on
+    H.eq(w.session:syncNow(), 145)
+    H.eq(#w.progress, 1)
+end)
+
+H.test("stopping while the seek is still pending does not overwrite ABS", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200 })
+    w.session:start(w.entry)
+    w.runNext()
+    w.status = st(2, 0)
+    w.session:stop()
+    H.eq(#w.progress, 0)
+    H.eq(w.stops, 1)
+end)
+
+H.test("a seek that never lands writes nothing and does not end the session", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200 })
+    w.session:start(w.entry)
+    w.runNext()
+    w.status = st(2, 0)
+    for _ = 1, 5 do w.runNext() end
+    H.eq(#w.progress, 0)
+    H.eq(w.session:isActive(), true)
+end)
+
+H.test("start reports the in-track offset so the UI can warn about slow seeks", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200 })
+    local ok, note, offset = w.session:start(w.entry)
+    H.eq(ok, true); H.eq(note, nil); H.eq(offset, 30)
+end)

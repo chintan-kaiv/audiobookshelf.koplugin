@@ -191,7 +191,7 @@ function AudioDetails.show(item_id)
 
     local function doPlay()
         local entry = ctx.store:get(item_id)
-        local ok, note = ctx.session:start(entry)
+        local ok, note, offset = ctx.session:start(entry)
         if not ok then
             if note == "kinamp_missing" then
                 toast(_("KinAMP's KOReader plugin was not found. Install KinAMP first."), 5)
@@ -202,6 +202,9 @@ function AudioDetails.show(item_id)
         end
         if note == "offline" then
             toast(_("Audiobookshelf is unreachable. Resuming from the last position saved on this Kindle."), 5)
+        elseif note ~= "attached" and offset and offset > 60 then
+            -- KinAMP seeks by decoding up to the position: silent for a while on long MP3s.
+            toast(_("Starting... jumping to your position in a long file can take about 20 to 30 seconds before you hear sound."), 8)
         end
         reopen()
     end
