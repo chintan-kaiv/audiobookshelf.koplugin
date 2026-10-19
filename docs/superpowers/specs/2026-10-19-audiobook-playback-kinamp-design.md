@@ -27,7 +27,7 @@ Status: draft for review · Date: 2026-10-19 · Repo: `chintan-kaiv/audiobookshe
 
 ## 3. Facts that shape the design
 
-**This plugin today** (`naleo/audiobookshelf.koplugin`, ~1,100 lines of Lua): lists libraries, lists and searches items, shows a details page, downloads files. It is ebook-only: item listing and search use the ABS `ebooks` filter, the details page only lists `fileType == "ebook"` files, and it contains no progress or audio code. Config is `audiobookshelf_config.lua` (`server`, `token`).
+**This plugin today** (`naleo/audiobookshelf.koplugin`, ~1,100 lines of Lua): lists libraries, lists and searches items, shows a details page, downloads files. It is ebook-only: item listing and search use the ABS `ebooks` filter, the details page only lists `fileType == "ebook"` files, and it contains no progress or audio code. Config is `audiobookshelf_config.lua` (`server`, `token`). Downloads go to a user-chosen `download_dir` (saved in that same settings file via the folder chooser, falling back to KOReader's last-used folder), as flat files named `<download_dir>/<filename>` with no per-book subfolder.
 
 **KinAMP** (`kbarni/KinAMP`, Beta) runs a separate player daemon. From `kinamp_backend.lua` and `cli_player.cpp`:
 - Control: a FIFO `.kinamp_cmd` accepting newline-terminated commands: `load <m3u path>`, `index <n>`, `seek <seconds>`, `play`, `pause`, `next`, `prev`, `stop`, `vol <0-100>`, `quit`. Several commands can be written in one write.
@@ -61,7 +61,7 @@ All new code lives next to the existing modules in `audiobookshelf/`; `main.lua`
 
 ## 6. Data flow
 
-**Download.** Select item, fetch expanded item, build the track table (order, `startOffset`, `duration`, `ino`), download each file to `<audiobooks_dir>/<safe title>/NN-<name>`, write `book.m3u`, save the store entry.
+**Download.** Select item, fetch expanded item, build the track table (order, `startOffset`, `duration`, `ino`), download each file to `<download_dir>/<safe title>/NN-<name>`, where `download_dir` is the plugin's existing setting (same chooser and persistence as ebooks), write `book.m3u` in that folder, save the store entry. Ebooks keep saving flat as they do today. If `download_dir` has never been chosen, ask once and save it, instead of silently using the last-visited folder.
 
 **Play / resume.**
 1. Fetch ABS progress (`currentTime`). If offline, use the stored last-synced position and say so.
@@ -111,7 +111,7 @@ Each is checked on the real device before the module that depends on it is writt
 
 ## 11. Open questions
 
-- Download folder: default `/mnt/us/audiobooks/` unless you prefer another.
+- Download folder: reuse the existing `download_dir`, with one subfolder per audiobook. KOReader's file browser may list audio files in that folder; unverified, and it's cosmetic only. A separate audiobook folder setting can be added if it gets in the way.
 - Package the fork under a new name so it can sit beside the original plugin? The folder must stay `audiobookshelf.koplugin` for KOReader to load it, so this would mean replacing, not installing alongside.
 - Upstream: send the generic parts (audio browsing, API additions) back to `naleo`, or keep the fork standalone? Check the upstream `LICENSE` before publishing.
 - Multiple users or devices writing the same ABS item: out of scope for v1.
