@@ -1,4 +1,5 @@
 local Dispatcher = require("dispatcher")
+local AudioContext = require("audiobookshelf/audiocontext")
 local AudiobookshelfBrowser = require("audiobookshelf/audiobookshelfbrowser")
 local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
@@ -31,6 +32,23 @@ function Audiobookshelf:addToMainMenu(menu_items)
             NetworkMgr:runWhenOnline(connect_callback)
         end
     }
+end
+
+-- Keep ABS in step with the player across device events. peek() avoids building
+-- the audio context for people who only use the ebook side.
+function Audiobookshelf:onSuspend()
+    local ctx = AudioContext.peek()
+    if ctx then ctx.session:suspend() end
+end
+
+function Audiobookshelf:onResume()
+    local ctx = AudioContext.peek()
+    if ctx then ctx.session:resume() end
+end
+
+function Audiobookshelf:onExit()
+    local ctx = AudioContext.peek()
+    if ctx then ctx.session:detach() end
 end
 
 return Audiobookshelf
