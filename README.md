@@ -30,3 +30,17 @@ If you click on a book, you go to the Book Details page, which gives details abo
 Click on the name of one of the Downloadable files, and follow the process to download the eBook.
 
 ![FileManager_2025-04-14_172211](https://github.com/user-attachments/assets/a05ce960-48ae-4bf7-a5a3-54b161a3b211)
+
+## Audiobooks (requires KinAMP)
+
+Each library is listed twice: once for ebooks, and once as "(Audiobooks)".
+
+1. Install [KinAMP](https://github.com/kbarni/KinAMP) (its KOReader plugin and player) on your Kindle. This plugin drives KinAMP's player; it does not play audio itself.
+2. Open "<Library> (Audiobooks)" and pick a book. **Download** saves it into `<download folder>/<Title>/` as numbered files (`001-...`, `002-...`) plus a `book.m3u`. The download folder is the same one used for ebooks; you are asked once if none is set.
+3. **Play / Resume** starts KinAMP at your Audiobookshelf position. While you listen, progress is sent to Audiobookshelf about every 30 seconds, and again when you stop, suspend or exit KOReader.
+
+Notes:
+- Starting a book replaces KinAMP's queue with the book's files.
+- Progress only syncs while KOReader is running. If you exit KOReader and keep listening, the last position is saved when you exit.
+- If Audiobookshelf is unreachable when you press Play, the last position saved on the Kindle is used.
+- A single file larger than 4 GB cannot be stored on the Kindle volume and is refused.

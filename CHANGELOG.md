@@ -1,3 +1,7 @@
+## 0.2.0 (unreleased)
+
+Audiobooks: browse, download and play through KinAMP, with progress synced back to Audiobookshelf. Ebook behaviour is unchanged.
+
 ## 0.1.3 (2025-12-01)
 
 Merged a PR with a bunch of error handling (#12)

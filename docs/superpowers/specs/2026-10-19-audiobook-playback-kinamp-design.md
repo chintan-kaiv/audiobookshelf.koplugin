@@ -42,7 +42,7 @@ Status: draft for review · Date: 2026-10-19 · Repo: `chintan-kaiv/audiobookshe
 
 A KOReader plugin (the fork) that talks to ABS directly and drives KinAMP's daemon. Chosen over forking BookBridge because the sync engine there skips audio-only mappings by design, and BookBridge changes fast. Chosen over a KinAMP patch because KinAMP's control interface is already enough.
 
-**Dependency:** KinAMP (its KOReader plugin and daemon) must be installed. The plugin refuses to start playback with a clear message if the daemon cannot be launched.
+**Dependency:** KinAMP (its KOReader plugin and daemon) must be installed. Playing a book uses KinAMP's `play_from_index`, which overwrites KinAMP's internal queue; this is documented in the README. The plugin refuses to start playback with a clear message if the daemon cannot be launched.
 
 ## 5. Components
 
@@ -53,11 +53,11 @@ All new code lives next to the existing modules in `audiobookshelf/`; `main.lua`
 | `audiobookshelfapi.lua` (extend) | Add audio item listing (no `ebooks` filter), expanded item fetch, `getProgress`, `setProgress`. | existing config |
 | `audiostore.lua` (new) | Where a book lives on the Kindle: folder per item, file order, per-file `startOffset`/`duration`, local paths, written `.m3u`, last synced position. Persisted with `LuaSettings`. | KOReader `datastorage`, `luasettings` |
 | `audiodownloader.lua` (new) | Sequential download of a book's audio files with resume (skip files already complete by size), progress message, cancel. | api, store |
-| `kinampclient.lua` (new) | Thin client for KinAMP: non-blocking FIFO write via `ffi` (open with `O_NONBLOCK`, ENXIO means no daemon), status-file parse, `is_running`, `launch`. Prefers `require("kinamp_backend")` if loadable, else its own small implementation. | `ffi`, `lfs` |
+| `kinampclient.lua` (new) | Adapter over KinAMP's own `kinamp_backend` module: play from an index, seek, stop, status, wait until running. No FIFO or status parsing of our own in v1. | `kinamp_backend` |
 | `positionmap.lua` (new, pure) | Converts between ABS position (seconds into the whole book) and KinAMP (`index`, `pos`) using the track table; single-M4B is the one-track case. | none |
-| `progresssync.lua` (new) | While a book is active: poll the status file on a timer, throttle and send progress to ABS, final sync on stop, suspend, and exit. | positionmap, kinampclient, api |
+| `audiosession.lua` + `progresspolicy.lua` (new) | While a book is active: poll the player status on a timer, decide when to send (`progresspolicy`, pure), send progress to ABS, final sync on stop, suspend, and exit. | positionmap, kinampclient, api |
 | `audiobookshelfbrowser.lua` (extend) | Audiobook vs ebook entry in the browser. | existing |
-| `audiodetailswidget.lua` (new) | Book page: Download, Delete local files, Play/Resume, Stop, Sync now. | store, downloader, kinampclient |
+| `audiodetails.lua` (new) | Book page (button dialog): Download, Delete local files, Play/Resume, Stop, Sync now. | store, downloader, kinampclient |
 
 ## 6. Data flow
 
@@ -67,7 +67,7 @@ All new code lives next to the existing modules in `audiobookshelf/`; `main.lua`
 1. Fetch ABS progress (`currentTime`). If offline, use the stored last-synced position and say so.
 2. `positionmap` turns it into `(index, offset)`.
 3. Ensure the daemon is running (launch if not), then send `load <book.m3u>`, `index <n>`, then `seek <offset>`.
-4. Start `progresssync` for this book.
+4. Start the audio session's progress timer for this book.
 
 **While playing.** Every ~30 s: read the status file; require `state` playing or paused, a valid `index`, and `path` that matches the active book's track; compute the global position; if it moved by at least 10 s since the last send, `PATCH` progress. On Stop, suspend and KOReader exit, send a final update. On resume from suspend, re-read status and sync once.
 
