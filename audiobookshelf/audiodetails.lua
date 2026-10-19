@@ -43,7 +43,13 @@ local function showKinampPlayer()
         local host = ReaderUI.instance or FileManager.instance
         local kinamp = host and host.kinamp
         if kinamp and kinamp.player and UIManager:isWidgetShown(kinamp.player) then return end
-        UIManager:sendEvent(require("ui/event"):new("ShowKinAMPPlayer"))
+        if kinamp and kinamp.onShowKinAMPPlayer then
+            -- Same call KinAMP's own menu entry makes. An event would go to the
+            -- top widget (our browser), which ignores it.
+            kinamp:onShowKinAMPPlayer()
+        else
+            UIManager:broadcastEvent(require("ui/event"):new("ShowKinAMPPlayer"))
+        end
     end)
     if not ok then logger.warn("audiobookshelf: could not show the KinAMP player:", err) end
 end
