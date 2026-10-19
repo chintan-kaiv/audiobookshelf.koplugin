@@ -45,7 +45,7 @@ function AudiobookshelfBrowser:genItemTableFromLibraries()
         })
         return item_table
     end
-    for _, library in ipairs(libraries) do
+    for _i, library in ipairs(libraries) do
         table.insert(item_table, {
             text = library.name,
             type = "library",
