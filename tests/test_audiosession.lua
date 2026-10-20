@@ -25,6 +25,7 @@ end
 local function setup(o)
     o = o or {}
     local w = { played = {}, seeks = {}, stops = 0, progress = {}, notes = {}, scheduled = {}, status = o.status,
+                events = {}, reconnects = 0,
                 remote = o.remote, remote_code = o.remote_code, fail = o.fail, running = o.running ~= false,
                 starts = o.starts ~= false }
     local store = Store.new(fakeSettings())
@@ -35,7 +36,12 @@ local function setup(o)
     local kinamp = {
         available = function() return o.available ~= false end,
         playFromIndex = function(index, p) w.played[#w.played + 1] = { index = index, paths = p }; return w.running end,
-        seek = function(s) w.seeks[#w.seeks + 1] = s end,
+        seek = function(s) w.seeks[#w.seeks + 1] = s; w.events[#w.events + 1] = "seek" end,
+        reconnectBluetooth = function(cb)
+            w.events[#w.events + 1] = "reconnect"
+            w.reconnects = w.reconnects + 1
+            if o.hold_reconnect then w.reconnect_cb = cb else cb(o.reconnect_ok ~= false) end
+        end,
         stop = function() w.stops = w.stops + 1 end,
         getStatus = function() return w.status end,
         waitUntilRunning = function(cb) cb(w.starts) end,
@@ -428,4 +434,46 @@ H.test("a player stopped from KinAMP's own screen still gets its last position s
     H.eq(w.progress[2].currentTime, 52)
     w.runNext() -- still stopped: nothing new to send
     H.eq(#w.progress, 2)
+end)
+
+H.test("a cold start reconnects Bluetooth before the seek", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = false })
+    w.session:start(w.entry)
+    w.runNext()
+    H.eq(w.reconnects, 1)
+    H.eq(w.events[1], "reconnect"); H.eq(w.events[2], "seek")
+end)
+
+H.test("a warm start does not touch Bluetooth", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = true })
+    w.session:start(w.entry)
+    w.runNext()
+    H.eq(w.reconnects, 0)
+    H.eq(w.seeks[1], 30)
+end)
+
+H.test("the seek waits until the Bluetooth reconnect has finished", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = false, hold_reconnect = true })
+    w.session:start(w.entry)
+    H.eq(#w.scheduled, 0) -- still reconnecting: nothing scheduled yet
+    w.reconnect_cb(true)
+    H.eq(#w.scheduled, 1)
+    w.runNext()
+    H.eq(w.seeks[1], 30)
+end)
+
+H.test("a failed Bluetooth reconnect still carries on to the seek", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = false, reconnect_ok = false })
+    w.session:start(w.entry)
+    w.runNext()
+    H.eq(w.seeks[1], 30)
+end)
+
+H.test("a reconnect that finishes after the session ended does not seek", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = false, hold_reconnect = true })
+    w.session:start(w.entry)
+    w.session:stop()
+    w.reconnect_cb(true)
+    w.runNext()
+    H.eq(#w.seeks, 0)
 end)

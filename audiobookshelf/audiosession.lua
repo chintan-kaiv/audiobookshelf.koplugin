@@ -188,11 +188,20 @@ function Session:start(entry)
         d.sched.scheduleIn(0.5, afterStart)
     else
         d.kinamp.waitUntilRunning(function(up)
-            if up then
-                d.sched.scheduleIn(1.0, afterStart)
-            else
+            if not up then
                 self:_end()
                 d.notify("KinAMP did not start.")
+                return
+            end
+            local function proceed() d.sched.scheduleIn(1.0, afterStart) end
+            -- KinAMP cycled the Bluetooth radio to start its player. The headset
+            -- comes back "connected" but its audio link is stale, so the player
+            -- is silent until the device is disconnected and connected again.
+            if d.kinamp.reconnectBluetooth then
+                d.notify("Reconnecting Bluetooth...")
+                d.kinamp.reconnectBluetooth(proceed)
+            else
+                proceed()
             end
         end)
     end
