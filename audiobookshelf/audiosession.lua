@@ -4,6 +4,7 @@ local PositionMap = require("audiobookshelf/positionmap")
 local Policy = require("audiobookshelf/progresspolicy")
 local AbsProgress = require("audiobookshelf/absprogress")
 local Store = require("audiobookshelf/audiostore")
+local ResumePoint = require("audiobookshelf/resumepoint")
 
 local Session = { TICK_SECONDS = 30, MAX_MISSES = 3, END_WINDOW = 60 }
 Session.__index = Session
@@ -142,33 +143,21 @@ function Session:start(entry)
         return true, "attached"
     end
 
-    local seconds, last_sent
-    local offline = false
-    if entry.unsynced and entry.last_sent then
-        -- Progress made while ABS was unreachable beats ABS's older position.
-        seconds = entry.last_sent
-        if d.api:setProgress(entry.item_id, AbsProgress.body(seconds, entry.total)) then
-            d.store:setLastSent(entry.item_id, seconds, false)
-            last_sent = seconds
+    local remote, code
+    local has_unsynced = entry.unsynced and entry.last_sent
+    if not has_unsynced then remote, code = d.api:getProgress(entry.item_id) end
+    local resume = ResumePoint.resolve(entry, remote, code)
+    local seconds, last_sent, offline = resume.seconds, resume.last_sent, resume.offline
+    if has_unsynced then
+        -- Push the position that never reached ABS before it is overwritten.
+        if d.api:setProgress(entry.item_id, AbsProgress.body(resume.raw, entry.total)) then
+            d.store:setLastSent(entry.item_id, resume.raw, false)
+            last_sent = resume.raw
         else
             offline = true
         end
-    else
-        local remote, code = d.api:getProgress(entry.item_id)
-        offline = (remote == nil and code ~= 404)
-        if remote and remote.isFinished then
-            seconds, last_sent = 0, nil
-        elseif remote and remote.currentTime then
-            seconds, last_sent = remote.currentTime, remote.currentTime
-        else
-            seconds, last_sent = entry.last_sent or 0, entry.last_sent
-        end
     end
-    -- At or near the end there is nothing left to resume into: start over.
-    local total = entry.total or 0
-    if total > 0 and seconds >= total - AbsProgress.FINISHED_WITHIN then
-        seconds, last_sent = 0, nil
-    end
+    if resume.source == "restart" then last_sent = nil end
 
     local index, offset = PositionMap.toTrackPos(entry.tracks, seconds)
     self.active = {

@@ -40,6 +40,7 @@ Each library is listed twice: once for ebooks, and once as "(Audiobooks)".
 3. **Play / Resume** starts KinAMP at your Audiobookshelf position. While you listen, progress is sent to Audiobookshelf about every 30 seconds, and again when you stop, suspend or exit KOReader.
 
 Notes:
+- The book page shows your Audiobookshelf position and where Play will resume: the file number and the time inside that file, which is what is passed to KinAMP.
 - Starting a book replaces KinAMP's queue with the book's files.
 - Progress only syncs while KOReader is running. It is saved when you stop, suspend, or leave KOReader (menu exit, power off, or the back-button exit). If KinAMP keeps playing after KOReader closes, the next Play joins it instead of seeking back to an older position.
 - A download can be stopped between files by tapping the progress message; a single very large file cannot be interrupted until it finishes.

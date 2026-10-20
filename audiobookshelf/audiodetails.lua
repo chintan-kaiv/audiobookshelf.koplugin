@@ -10,6 +10,7 @@ local _ = require("gettext")
 local AudioContext = require("audiobookshelf/audiocontext")
 local Downloader = require("audiobookshelf/audiodownloader")
 local PositionMap = require("audiobookshelf/positionmap")
+local ResumePoint = require("audiobookshelf/resumepoint")
 local Store = require("audiobookshelf/audiostore")
 
 local AudioDetails = {}
@@ -247,6 +248,31 @@ function AudioDetails.show(item_id)
         local info = T(_("%1\n%2\nLength: %3\nTracks: %4\n%5"),
             title, author, hms(total), #tracks,
             downloaded and _("Downloaded") or _("Not downloaded"))
+
+        -- Where Play will start: the same calculation the session uses, so this is
+        -- exactly what gets handed to KinAMP.
+        local ok_resume, resume_text = pcall(function()
+            local remote, code = ctx.api:getProgress(item_id)
+            local resolved = ResumePoint.resolve(entry or { total = total }, remote, code)
+            local d = ResumePoint.describe(tracks, total, resolved)
+            local text = T(_("Position: %1 of %2 (%3%)"), d.position, d.total, d.percent)
+                .. "\n" .. T(_("Resume at: file %1 of %2, %3 into it"), d.track_index, d.track_count, d.track_time)
+            local notes = {
+                ["local"] = _("(Audiobookshelf unreachable: position saved on this Kindle)"),
+                unsynced = _("(not yet sent to Audiobookshelf)"),
+                finished = _("(finished: will start from the beginning)"),
+                restart = _("(at the end: will start from the beginning)"),
+            }
+            local note = notes[d.note]
+            if not note and resolved.offline then note = _("(Audiobookshelf unreachable)") end
+            if note then text = text .. "\n" .. note end
+            return text
+        end)
+        if ok_resume then
+            info = info .. "\n" .. resume_text
+        else
+            logger.warn("audiobookshelf: could not work out the resume point:", resume_text)
+        end
         local buttons = {
             {
                 downloaded
