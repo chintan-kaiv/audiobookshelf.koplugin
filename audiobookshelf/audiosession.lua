@@ -183,7 +183,7 @@ function Session:start(entry)
     local remote, code
     local has_unsynced = entry.unsynced and entry.last_sent
     if not has_unsynced then remote, code = d.api:getProgress(entry.item_id) end
-    local resume = ResumePoint.resolve(entry, remote, code)
+    local resume = ResumePoint.resolve(entry, remote, code, d.rewind)
     local seconds, last_sent, offline = resume.seconds, resume.last_sent, resume.offline
     if has_unsynced then
         -- Push the position that never reached ABS before it is overwritten.

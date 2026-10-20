@@ -62,7 +62,7 @@ local function setup(o)
             end
         end,
     }
-    w.session = Session.new({ api = api, store = store, kinamp = kinamp, sched = sched,
+    w.session = Session.new({ api = api, store = store, kinamp = kinamp, sched = sched, rewind = o.rewind,
                               notify = function(m) w.notes[#w.notes + 1] = m end })
     function w.runNext()
         local item = table.remove(w.scheduled, 1)
@@ -534,4 +534,30 @@ H.test("stopping while waiting for the seek cancels the wait", function()
     w.session:stop()
     H.eq(#w.scheduled, 0)
     H.eq(w.reconnects, 0)
+end)
+
+H.test("playback resumes the configured number of seconds before the ABS position", function()
+    local w = setup({ remote = { currentTime = 160 }, remote_code = 200, rewind = 30 })
+    w.session:start(w.entry)
+    H.eq(w.played[1].index, 2)
+    w.runNext()
+    H.eq(w.seeks[1], 30) -- 160 - 30 = 130: 30 s into file 2, not 60
+end)
+
+H.test("a rewind can cross into the previous file", function()
+    local w = setup({ remote = { currentTime = 110 }, remote_code = 200, rewind = 30 })
+    w.session:start(w.entry)
+    H.eq(w.played[1].index, 1)
+    w.runNext()
+    H.eq(w.seeks[1], 80)
+end)
+
+H.test("unsent progress is pushed as the real position, not the rewound one", function()
+    local w = setup({ remote = { currentTime = 20 }, remote_code = 200, rewind = 30 })
+    w.entry.last_sent = 150
+    w.entry.unsynced = true
+    w.session:start(w.entry)
+    H.eq(w.progress[1].currentTime, 150)
+    w.runNext()
+    H.eq(w.seeks[1], 20) -- resumes at 120
 end)

@@ -253,7 +253,7 @@ function AudioDetails.show(item_id)
         -- exactly what gets handed to KinAMP.
         local ok_resume, resume_text = pcall(function()
             local remote, code = ctx.api:getProgress(item_id)
-            local resolved = ResumePoint.resolve(entry or { total = total }, remote, code)
+            local resolved = ResumePoint.resolve(entry or { total = total }, remote, code, ctx.rewind)
             local d = ResumePoint.describe(tracks, total, resolved)
             local text = T(_("Position: %1 of %2 (%3%)"), d.position, d.total, d.percent)
                 .. "\n" .. T(_("Resume at: file %1 of %2, %3 into it"), d.track_index, d.track_count, d.track_time)
@@ -266,6 +266,9 @@ function AudioDetails.show(item_id)
             local note = notes[d.note]
             if not note and resolved.offline then note = _("(Audiobookshelf unreachable)") end
             if note then text = text .. "\n" .. note end
+            if d.rewind and d.rewind > 0 then
+                text = text .. "\n" .. T(_("(%1 s before your position, so you do not miss anything)"), d.rewind)
+            end
             return text
         end)
         if ok_resume then

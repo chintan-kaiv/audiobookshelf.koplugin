@@ -67,3 +67,37 @@ H.test("describe passes the source through as a note and handles the start", fun
     local d = RP.describe(tracks, 200, { seconds = 0, source = "finished" })
     H.eq(d.note, "finished"); H.eq(d.track_index, 1); H.eq(d.track_time, "0:00"); H.eq(d.percent, 0)
 end)
+
+H.test("a rewind moves the resume point back from an ABS position", function()
+    local r = RP.resolve(entry(), { currentTime = 160 }, 200, 30)
+    H.eq(r.seconds, 130); H.eq(r.raw, 160); H.eq(r.rewind, 30); H.eq(r.last_sent, 160); H.eq(r.source, "abs")
+end)
+
+H.test("a rewind never goes before the start and reports what it actually rewound", function()
+    local r = RP.resolve(entry(), { currentTime = 20 }, 200, 30)
+    H.eq(r.seconds, 0); H.eq(r.rewind, 20)
+end)
+
+H.test("saved and unsent positions are rewound too", function()
+    local a = RP.resolve(entry({ last_sent = 150 }), nil, nil, 30)
+    H.eq(a.seconds, 120); H.eq(a.source, "local")
+    local b = RP.resolve(entry({ last_sent = 150, unsynced = true }), nil, nil, 30)
+    H.eq(b.seconds, 120); H.eq(b.raw, 150); H.eq(b.source, "unsynced")
+end)
+
+H.test("starting over, finished and restart are never rewound", function()
+    H.eq(RP.resolve(entry(), nil, 404, 30).rewind, 0)
+    H.eq(RP.resolve(entry(), { currentTime = 199, isFinished = true }, 200, 30).rewind, 0)
+    local r = RP.resolve(entry(), { currentTime = 195 }, 200, 30)
+    H.eq(r.seconds, 0); H.eq(r.rewind, 0); H.eq(r.source, "restart")
+end)
+
+H.test("no rewind argument means no rewind", function()
+    local r = RP.resolve(entry(), { currentTime = 160 }, 200)
+    H.eq(r.seconds, 160); H.eq(r.rewind, 0)
+end)
+
+H.test("describe passes the rewind through", function()
+    local d = RP.describe(tracks, 200, { seconds = 130, rewind = 30, source = "abs" })
+    H.eq(d.rewind, 30)
+end)

@@ -18,10 +18,13 @@ end
 
 -- entry: the stored audiobook; remote, code: what ABS's progress call returned
 -- (404 = no progress yet, any other nil = unreachable).
--- Returns { seconds, raw, last_sent, offline, source } where `seconds` is where
--- playback starts, `raw` the position before the "restart near the end" rule,
--- and `source` one of abs, local, unsynced, start, finished, restart.
-function M.resolve(entry, remote, code)
+-- `rewind` (seconds, optional) starts playback that much before a real saved
+-- position, so audio lost to the seek and the Bluetooth reconnect is not missed.
+-- Returns { seconds, raw, rewind, last_sent, offline, source } where `seconds` is
+-- where playback starts, `raw` the real position before the "restart near the
+-- end" rule and the rewind, `rewind` how far it was actually moved back, and
+-- `source` one of abs, local, unsynced, start, finished, restart.
+function M.resolve(entry, remote, code, rewind)
     local total = entry.total or 0
     local raw, last_sent, source = 0, nil, "start"
     local offline = false
@@ -43,7 +46,12 @@ function M.resolve(entry, remote, code)
     if source ~= "finished" and total > 0 and raw >= total - AbsProgress.FINISHED_WITHIN then
         seconds, last_sent, source = 0, nil, "restart"
     end
-    return { seconds = seconds, raw = raw, last_sent = last_sent, offline = offline, source = source }
+    local rewound = 0
+    if rewind and rewind > 0 and (source == "abs" or source == "local" or source == "unsynced") then
+        seconds = math.max(0, raw - rewind)
+        rewound = raw - seconds
+    end
+    return { seconds = seconds, raw = raw, rewind = rewound, last_sent = last_sent, offline = offline, source = source }
 end
 
 -- Display values for the book page.
@@ -60,6 +68,7 @@ function M.describe(tracks, total, resolved)
         track_index = index,
         track_count = #tracks,
         track_time = M.fmt(offset),
+        rewind = resolved.rewind or 0,
         note = note,
     }
 end

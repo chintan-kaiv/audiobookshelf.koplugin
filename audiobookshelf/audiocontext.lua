@@ -14,6 +14,10 @@ local Store = require("audiobookshelf/audiostore")
 local Context = {}
 local instance
 
+-- Resume this many seconds before the saved position: the seek and the Bluetooth
+-- reconnect swallow a few seconds of audio, and a short recap helps anyway.
+local REWIND_SECONDS = 30
+
 function Context.get()
     if instance then return instance end
     local config_file = string.gsub(debug.getinfo(1).source, "^@(.+/)[^/]+$", "%1") .. "/../audiobookshelf_config.lua"
@@ -23,6 +27,7 @@ function Context.get()
         api = Api,
         store = store,
         kinamp = Kinamp,
+        rewind = REWIND_SECONDS,
         log = function(message) logger.warn("audiobookshelf session:", message) end,
         sched = {
             scheduleIn = function(seconds, fn) UIManager:scheduleIn(seconds, fn) end,
@@ -32,7 +37,8 @@ function Context.get()
             UIManager:show(InfoMessage:new{ text = message, timeout = 3 })
         end,
     })
-    instance = { api = Api, settings = settings, store = store, session = session, kinamp = Kinamp }
+    instance = { api = Api, settings = settings, store = store, session = session, kinamp = Kinamp,
+                 rewind = REWIND_SECONDS }
     return instance
 end
 
