@@ -1,6 +1,12 @@
-## 0.2.0 (unreleased)
+## 1.1.0 (2026-10-20)
 
-Audiobooks: browse, download and play through KinAMP, with progress synced back to Audiobookshelf. Ebook behaviour is unchanged.
+- Start KinAMP's player directly, without KinAMP's own Bluetooth radio cycle and its "Preparing Bluetooth" popup.
+- Reconnect the headset once playback is running (waits up to 3 minutes for a slow seek), so sound works after a fresh start.
+- Show "Starting KinAMP..." while the player starts.
+
+## 1.0.0 (2026-10-20)
+
+Audiobooks: browse, download and play through KinAMP, with progress synced back to Audiobookshelf. Play resumes 30 seconds before the saved position, the book page shows the position and where playback will resume, and KinAMP's player opens when playback starts. Ebook behaviour is unchanged.
 
 ## 0.1.3 (2025-12-01)
 
