@@ -1,3 +1,8 @@
+## 1.2.0 (unreleased)
+
+- Show the book's cover artwork at the top of the audiobook page.
+- Show the same artwork in KinAMP's player while the book plays. The cover is saved as `cover.jpg` in the book's folder (fetched on download, or on the next Play for books downloaded earlier).
+
 ## 1.1.0 (2026-10-20)
 
 - Start KinAMP's player directly, without KinAMP's own Bluetooth radio cycle and its "Preparing Bluetooth" popup.

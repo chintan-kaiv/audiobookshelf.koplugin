@@ -8,6 +8,10 @@ local logger = require("logger")
 local _ = require("gettext")
 
 local AudioContext = require("audiobookshelf/audiocontext")
+local AudioCover = require("audiobookshelf/audiocover")
+local AudioPage = require("audiobookshelf/audiopage")
+local KinampCover = require("audiobookshelf/kinampcover")
+local RenderImage = require("ui/renderimage")
 local Downloader = require("audiobookshelf/audiodownloader")
 local PositionMap = require("audiobookshelf/positionmap")
 local ResumePoint = require("audiobookshelf/resumepoint")
@@ -37,19 +41,26 @@ end
 
 -- Bring KinAMP's floating player to the front. Its "show player" action is a
 -- toggle, so only fire it when the player is not already on screen.
-local function showKinampPlayer()
+local function showKinampPlayer(cover_path, is_active)
     local ok, err = pcall(function()
         local ReaderUI = require("apps/reader/readerui")
         local FileManager = require("apps/filemanager/filemanager")
         local host = ReaderUI.instance or FileManager.instance
         local kinamp = host and host.kinamp
-        if kinamp and kinamp.player and UIManager:isWidgetShown(kinamp.player) then return end
-        if kinamp and kinamp.onShowKinAMPPlayer then
-            -- Same call KinAMP's own menu entry makes. An event would go to the
-            -- top widget (our browser), which ignores it.
-            kinamp:onShowKinAMPPlayer()
-        else
-            UIManager:broadcastEvent(require("ui/event"):new("ShowKinAMPPlayer"))
+        local shown = kinamp and kinamp.player and UIManager:isWidgetShown(kinamp.player)
+        if not shown then
+            if kinamp and kinamp.onShowKinAMPPlayer then
+                -- Same call KinAMP's own menu entry makes. An event would go to the
+                -- top widget (our browser), which ignores it.
+                kinamp:onShowKinAMPPlayer()
+            else
+                UIManager:broadcastEvent(require("ui/event"):new("ShowKinAMPPlayer"))
+            end
+        end
+        -- Show the book's artwork in KinAMP's player (it only knows embedded art).
+        local player = kinamp and kinamp.player
+        if player and cover_path and KinampCover.apply(player, cover_path, is_active) then
+            UIManager:setDirty(player, "ui")
         end
     end)
     if not ok then logger.warn("audiobookshelf: could not show the KinAMP player:", err) end
@@ -77,6 +88,20 @@ local function realFs()
             f:write(text)
             f:close()
             return true
+        end,
+        write_bytes = function(path, data)
+            local f = io.open(path, "wb")
+            if not f then return nil end
+            local ok = f:write(data)
+            f:close()
+            return ok and true or nil
+        end,
+        read_bytes = function(path)
+            local f = io.open(path, "rb")
+            if not f then return nil end
+            local data = f:read("*a")
+            f:close()
+            return data
         end,
     }
 end
@@ -123,6 +148,7 @@ function AudioDetails.show(item_id)
 
     local dialog
     local render
+    local cover_checked, cover_bytes -- fetched once per visit to the page
 
     local function reopen()
         if dialog then UIManager:close(dialog) end
@@ -162,6 +188,7 @@ function AudioDetails.show(item_id)
             local function finish(done, err)
                 closeMsg()
                 if done then
+                    pcall(AudioCover.ensure, entry, ctx.api, fs) -- artwork is optional
                     ctx.store:put(entry)
                     toast(T(_("Saved to:\n%1"), entry.dir), 4)
                     reopen()
@@ -223,7 +250,8 @@ function AudioDetails.show(item_id)
         end
         -- Hand the screen to KinAMP's player (its own Stop/Pause live there).
         if dialog then UIManager:close(dialog) end
-        showKinampPlayer()
+        local cover_ok, cover_path = pcall(AudioCover.ensure, entry, ctx.api, realFs())
+        showKinampPlayer(cover_ok and cover_path or nil, function() return ctx.session:isActive(item_id) end)
         if note == "offline" then
             toast(_("Audiobookshelf is unreachable. Resuming from the last position saved on this Kindle."), 5)
         elseif note ~= "attached" and offset and offset > 60 then
@@ -293,7 +321,23 @@ function AudioDetails.show(item_id)
                 { text = _("Close"), callback = function() UIManager:close(dialog) end },
             },
         }
-        dialog = ButtonDialog:new{ title = info, buttons = buttons }
+        -- Cover on top. Any failure along the way just means no cover, or the
+        -- plain dialog as before.
+        if not cover_checked then
+            cover_checked = true
+            local got, bytes = pcall(AudioCover.bytes, entry, item_id, ctx.api, realFs())
+            cover_bytes = got and bytes or nil
+        end
+        local image
+        if cover_bytes then
+            local rendered, bb = pcall(RenderImage.renderImageData, RenderImage, cover_bytes, #cover_bytes)
+            if rendered then image = bb end
+        end
+        local built, page = pcall(function()
+            return AudioPage:new{ title = info, buttons = buttons, image = image }
+        end)
+        if not built then logger.warn("audiobookshelf: audiobook page failed, using plain dialog:", page) end
+        dialog = built and page or ButtonDialog:new{ title = info, buttons = buttons }
         UIManager:show(dialog)
     end
 

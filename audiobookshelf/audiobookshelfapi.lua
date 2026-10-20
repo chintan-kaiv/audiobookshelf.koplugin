@@ -188,6 +188,30 @@ function AudiobookshelfApi:getSearchResults(id, search_query, opts)
     return nil
 end
 
+-- Raw cover image bytes (a JPEG, resized by the server) or nil on any failure.
+function AudiobookshelfApi:getCoverBytes(id, width)
+    local server = self.abs_settings:readSetting("server")
+    local token = self.abs_settings:readSetting("token")
+    if not server or not token then return nil end
+    local sink = {}
+    local request = {
+        url = server .. "/api/items/" .. id .. "/cover?format=jpeg&width=" .. tostring(width or 600),
+        method = "GET",
+        headers = {
+            ["Authorization"] = "Bearer " .. token,
+            ["User-Agent"] = T("audiobookshelf.koplugin/%1", table.concat(VERSION, ".")),
+        },
+        sink = ltn12.sink.table(sink),
+    }
+    socketutil:set_timeout()
+    local ok, code = pcall(function() return socket.skip(1, http.request(request)) end)
+    local response = table.concat(sink)
+    socketutil:reset_timeout()
+    if ok and code == 200 and response ~= "" then return response end
+    logger.warn("AudiobookshelfApi: could not get cover bytes for", id, ok and code or "request failed")
+    return nil
+end
+
 -- Generic JSON request. Returns (table, code) on 200/204, (nil, code) on any
 -- other status and (nil, nil) when the request itself failed (unreachable).
 -- ABS answers progress writes with plain "OK", which is not JSON, so a 200 with
