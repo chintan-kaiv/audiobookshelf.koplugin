@@ -1,4 +1,4 @@
-## 1.2.0 (unreleased)
+## 1.2.0 (2026-10-20)
 
 - Show the book's cover artwork at the top of the audiobook page.
 - Show the same artwork in KinAMP's player while the book plays. The cover is saved as `cover.jpg` in the book's folder (fetched on download, or on the next Play for books downloaded earlier).
