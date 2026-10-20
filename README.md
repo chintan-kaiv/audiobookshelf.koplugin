@@ -41,7 +41,8 @@ Each library is listed twice: once for ebooks, and once as "(Audiobooks)".
 
 Notes:
 - The book page shows your Audiobookshelf position and where Play will resume: the file number and the time inside that file, which is what is passed to KinAMP.
-- When Play has to start KinAMP's player fresh, the plugin starts it directly. KinAMP's own startup cycles the Bluetooth radio, which leaves some headsets (AirPods on firmware 5.19) connected but silent until reconnected, so it is skipped. The trade-off: KinAMP's 20 minute keepalive flag is not set, so a headset left idle for a long time may disconnect. If you hear nothing, reconnect the headset from KinAMP's Bluetooth menu.
+- When Play has to start KinAMP's player fresh, the plugin starts it directly, without KinAMP's own Bluetooth radio cycle and its "Preparing Bluetooth" popup. The trade-off: KinAMP's 20 minute keepalive flag is not set, so a headset left idle for a long time may disconnect.
+- Some headsets (AirPods on firmware 5.19) stay silent until they are disconnected and reconnected while audio is playing. After a fresh start the plugin waits until playback is running at your position (up to 3 minutes, long MP3s seek slowly) and then reconnects the headset once. If you still hear nothing, reconnect the headset from KinAMP's Bluetooth menu.
 - Play resumes 30 seconds before your saved position, so the seconds lost to the seek and the Bluetooth reconnect are not missed. The book page shows the position it will use. Starting a book from the beginning, or after finishing it, is not rewound.
 - Starting a book replaces KinAMP's queue with the book's files.
 - Progress only syncs while KOReader is running. It is saved when you stop, suspend, or leave KOReader (menu exit, power off, or the back-button exit). If KinAMP keeps playing after KOReader closes, the next Play joins it instead of seeking back to an older position.

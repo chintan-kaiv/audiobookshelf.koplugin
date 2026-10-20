@@ -6,7 +6,7 @@ local AbsProgress = require("audiobookshelf/absprogress")
 local Store = require("audiobookshelf/audiostore")
 local ResumePoint = require("audiobookshelf/resumepoint")
 
-local Session = { TICK_SECONDS = 30, MAX_MISSES = 3, END_WINDOW = 60, LAND_POLL_SECONDS = 2, LAND_MAX_TRIES = 45 }
+local Session = { TICK_SECONDS = 30, MAX_MISSES = 3, END_WINDOW = 60, LAND_POLL_SECONDS = 2, LAND_MAX_TRIES = 90 }
 Session.__index = Session
 
 -- Reasons that mean "the player is not playing our book right now". Paused is

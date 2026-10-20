@@ -18,10 +18,11 @@ local instance
 -- reconnect swallow a few seconds of audio, and a short recap helps anyway.
 local REWIND_SECONDS = 30
 
--- KinAMP's own startup cycles the Bluetooth radio and leaves the headset silent
--- until it is reconnected. The adapter starts the player directly, so no
--- reconnect is needed. Set to true to reconnect after a fresh start again.
-local RECONNECT_ON_COLD_START = false
+-- After a fresh player start, disconnect and reconnect the headset once playback
+-- is running at the right position. Tested on a Kindle with AirPods (firmware
+-- 5.19): the audio link is silent until this happens, even when the player is
+-- started directly without KinAMP's Bluetooth radio cycle.
+local RECONNECT_ON_COLD_START = true
 
 function Context.get()
     if instance then return instance end
