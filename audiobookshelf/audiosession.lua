@@ -218,15 +218,19 @@ function Session:start(entry)
     if d.kinamp.playFromIndex(index, paths) then
         d.sched.scheduleIn(0.5, afterStart)
     else
+        d.notify("Starting KinAMP...")
         d.kinamp.waitUntilRunning(function(up)
             if not up then
                 self:_end()
                 d.notify("KinAMP did not start.")
                 return
             end
-            -- We launched KinAMP, which cycled the Bluetooth radio: the headset's
-            -- audio link needs a reconnect, done once playback is running.
-            if self.active and self.active.entry == entry then self.active.bt_fix = true end
+            -- If KinAMP's own startup cycled the Bluetooth radio, the headset's audio
+            -- link needs a reconnect, done once playback is running. Not needed when
+            -- the adapter starts the player directly (reconnect_on_cold_start off).
+            if d.reconnect_on_cold_start and self.active and self.active.entry == entry then
+                self.active.bt_fix = true
+            end
             d.sched.scheduleIn(1.0, afterStart)
         end)
     end

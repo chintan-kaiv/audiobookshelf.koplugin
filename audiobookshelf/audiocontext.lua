@@ -18,6 +18,11 @@ local instance
 -- reconnect swallow a few seconds of audio, and a short recap helps anyway.
 local REWIND_SECONDS = 30
 
+-- KinAMP's own startup cycles the Bluetooth radio and leaves the headset silent
+-- until it is reconnected. The adapter starts the player directly, so no
+-- reconnect is needed. Set to true to reconnect after a fresh start again.
+local RECONNECT_ON_COLD_START = false
+
 function Context.get()
     if instance then return instance end
     local config_file = string.gsub(debug.getinfo(1).source, "^@(.+/)[^/]+$", "%1") .. "/../audiobookshelf_config.lua"
@@ -28,6 +33,7 @@ function Context.get()
         store = store,
         kinamp = Kinamp,
         rewind = REWIND_SECONDS,
+        reconnect_on_cold_start = RECONNECT_ON_COLD_START,
         log = function(message) logger.warn("audiobookshelf session:", message) end,
         sched = {
             scheduleIn = function(seconds, fn) UIManager:scheduleIn(seconds, fn) end,

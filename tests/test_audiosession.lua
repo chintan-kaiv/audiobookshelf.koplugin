@@ -63,6 +63,7 @@ local function setup(o)
         end,
     }
     w.session = Session.new({ api = api, store = store, kinamp = kinamp, sched = sched, rewind = o.rewind,
+                              reconnect_on_cold_start = (o.reconnect ~= false),
                               notify = function(m) w.notes[#w.notes + 1] = m end })
     function w.runNext()
         local item = table.remove(w.scheduled, 1)
@@ -133,7 +134,7 @@ H.test("a daemon that never starts ends the session", function()
     local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = false, starts = false })
     w.session:start(w.entry)
     H.eq(w.session:isActive(), false)
-    H.eq(#w.notes, 1)
+    H.eq(w.notes[#w.notes], "KinAMP did not start.")
 end)
 
 H.test("missing KinAMP is reported", function()
@@ -560,4 +561,30 @@ H.test("unsent progress is pushed as the real position, not the rewound one", fu
     H.eq(w.progress[1].currentTime, 150)
     w.runNext()
     H.eq(w.seeks[1], 20) -- resumes at 120
+end)
+
+H.test("a cold start tells the user KinAMP is starting", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = false })
+    w.session:start(w.entry)
+    H.eq(w.notes[1], "Starting KinAMP...")
+end)
+
+H.test("a warm start shows no start-up message", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = true })
+    w.session:start(w.entry)
+    H.eq(#w.notes, 0)
+end)
+
+H.test("with the reconnect switched off a cold start never touches Bluetooth and syncs normally", function()
+    local w = setup({ remote = { currentTime = 130 }, remote_code = 200, running = false, reconnect = false })
+    w.session:start(w.entry)
+    w.runNext() -- afterStart: seek sent, progress tick scheduled straight away
+    H.eq(w.seeks[1], 30)
+    H.eq(#w.scheduled, 1)
+    H.eq(w.scheduled[1].s, Session.TICK_SECONDS)
+    w.status = st(2, 45)
+    w.runNext()
+    H.eq(w.reconnects, 0)
+    H.eq(#w.progress, 1)
+    H.eq(w.progress[1].currentTime, 145)
 end)
